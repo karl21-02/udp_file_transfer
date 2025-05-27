@@ -28,7 +28,8 @@ WSL(Windows Subsystem for Linux)은 윈도우에서 리눅스 환경을 지원�
 **A. 작업 디렉토리로 이동**
    두 개의 터미널 창(CMD 또는 다른 터미널 에뮬레이터)을 열고, WSL 환경 하에서 다음 경로로 각각 이동합니다. (Receiver와 Sender를 별도로 실행합니다.)
    ```bash
-   cd /mnt/c/workspace/UdpFileTransfer/src/main/java/com/kangwon```
+       cd /mnt/c/workspace/UdpFileTransfer/src/main/java/com/kangwon
+   ```
 
 **B. 전송할 파일 준비**
    fileForSender 폴더에 전송하기 원하는 파일을 생성합니다.
@@ -36,14 +37,12 @@ WSL(Windows Subsystem for Linux)은 윈도우에서 리눅스 환경을 지원�
      # /mnt/c/workspace/UdpFileTransfer/src/main/java/com/kangwon/sender/fileForSender/ 디렉토리에 생성
      # 예시: echo "Hello WSL!" > sender/fileForSender/helloWorld.txt
    ```
-**C. Receiver 실행:
-첫 번째 터미널 창에서 다음 명령어를 통해 FileReceiver를 먼저 실행시킵니다.**
+**C. Receiver 실행: 첫 번째 터미널 창에서 다음 명령어를 통해 FileReceiver를 먼저 실행시킵니다.**
      ```
          java receiver/FileReceiver.java 8888
      ```
 
-**D. Sender 실행:
-두 번째 터미널 창에서 다음 명령어를 통해 FileSender를 실행시킵니다.**
+**D. Sender 실행: 두 번째 터미널 창에서 다음 명령어를 통해 FileSender를 실행시킵니다.**
      ```
          java sender/FileSender.java "127.0.0.1" 8888 "helloWorld.txt"
      ```
