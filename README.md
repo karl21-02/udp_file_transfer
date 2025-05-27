@@ -49,11 +49,11 @@ WSL(Windows Subsystem for Linux)은 윈도우에서 리눅스 환경을 지원�
 
 ** 4. 실행 결과 (Output Examples) 📊 **
 
-Receiver 출력 예시
-Greeting
-helloWorld.txt
+Receiver 출력 예시:<br>
+Greeting<br>
+helloWorld.txt<br>
 From FileSender : Finish
 
-Sender 출력 예시
-From FileReceiver : OK
+Sender 출력 예시:<br>
+From FileReceiver : OK<br>
 From FileReceiver : WellDone
