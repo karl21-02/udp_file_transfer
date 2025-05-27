@@ -46,7 +46,9 @@ WSL(Windows Subsystem for Linux)은 윈도우에서 리눅스 환경을 지원�
      ```
          java sender/FileSender.java "127.0.0.1" 8888 "helloWorld.txt"
      ```
+
 ** 4. 실행 결과 (Output Examples) 📊 **
+
 Receiver 출력 예시
 Greeting
 helloWorld.txt
