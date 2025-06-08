@@ -24,6 +24,7 @@ public class Packet implements Serializable {
         this.type = type;
         this.seqNum = seqNum;
         this.ackNum = seqNum;
+        this.length = 0;
         this.data = new byte[0];
     }
 

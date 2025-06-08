@@ -124,7 +124,22 @@ public class FileReceiver {
                             // 생성된 ACK 패킷을 Sender에게 전송합니다.
                             udpSocket.send(datagramPacketACK);
                         }
-                        else if(chunkReceived.getType() == 2) {
+                        else if(chunkReceived.getType() == 2) { // EOT
+                            Packet ackPacket = new Packet(1, chunkReceived.getSeqNum());
+                            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                            ObjectOutputStream oos = new ObjectOutputStream(baos);
+                            oos.writeObject(ackPacket);
+                            byte[] ackData = baos.toByteArray();
+
+                            DatagramPacket datagramPacketACK = new DatagramPacket(
+                                    ackData,
+                                    ackData.length,
+                                    packetFileFromServer.getAddress(),
+                                    packetFileFromServer.getPort()
+                            );
+
+                            // 생성된 ACK 패킷을 Sender에게 전송합니다.
+                            udpSocket.send(datagramPacketACK);
                             break;
                         }
                     } catch (ClassNotFoundException e) {

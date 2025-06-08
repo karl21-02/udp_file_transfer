@@ -132,7 +132,28 @@ public class FileSender {
             }
             curSeqNum++;
         }
-        sendPacketToReceiver(new Packet(2, 0), address, port);
+
+        // EOT
+        sendPacketToReceiver(new Packet(2, curSeqNum), address, port);
+
+        // ACK Receive of EOT
+        byte[] ackData = new byte[1000];
+        DatagramPacket datagramPacketACK = new DatagramPacket(ackData, ackData.length);
+        udpSocket.receive(datagramPacketACK);
+
+        Packet receivedACK = null;
+        try {
+            ByteArrayInputStream bais = new ByteArrayInputStream(datagramPacketACK.getData());
+            ObjectInputStream ois = new ObjectInputStream(bais);
+
+            receivedACK = (Packet) ois.readObject();
+            if(receivedACK.getType() == 1 && receivedACK.getAckNum() == curSeqNum) {
+                System.out.println("connection terminates");
+            }
+        }
+        catch (ClassNotFoundException classNotFoundException) {
+            throw new IOException("패킷을 찾을 수 없습니다");
+        }
     }
 
     private static void sendPacketToReceiver(Packet packet, InetAddress address, int port) throws IOException {
