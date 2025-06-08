@@ -12,12 +12,12 @@ import java.nio.charset.StandardCharsets;
 
 public class FileReceiver {
     public static void main(String[] args) {
-        int port = Integer.parseInt(args[0]);
-
-        start(port);
+        int ReceiverPort = Integer.parseInt(args[0]);
+        double ackDropProbability = Double.parseDouble(args[1]);
+        start(ReceiverPort, ackDropProbability);
     }
     private static DatagramSocket udpSocket;
-    public static void start(int port) {
+    public static void start(int port, double ackDropProbability) {
         try {
             udpSocket = new DatagramSocket(port);
             int count = 2;

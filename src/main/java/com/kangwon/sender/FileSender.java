@@ -12,18 +12,21 @@ public class FileSender {
     private static DatagramSocket udpSocket;
 
     public static void main(String[] args) {
-        String ip = args[0];
-        int port = Integer.parseInt(args[1]);
-        String fileName = args[2];
-        start(ip, port, fileName);
+        int senderPort = Integer.parseInt(args[0]);
+        String receiverIpAddress = args[1];
+        int receiverPort = Integer.parseInt(args[2]);
+        int timeoutInterval = Integer.parseInt(args[3]);
+        String fileName = args[4];
+        double ackDropProbability = Double.parseDouble(args[5]);
+        start(senderPort, receiverIpAddress, receiverPort, timeoutInterval, fileName, ackDropProbability);
     }
 
-    public static void start(String ip, int port, String fileName) {
+    public static void start(int senderPort, String receiverIpAddress, int receiverPort, int timeoutInterval, String fileName, double ackDropProbability) {
         try {
-            InetSocketAddress newIp = new InetSocketAddress(InetAddress.getByName(ip), port);
+            System.out.println(123);
+            InetSocketAddress newIp = new InetSocketAddress(InetAddress.getByName(receiverIpAddress), senderPort);
             udpSocket = new DatagramSocket();
             udpSocket.setSoTimeout(5000);
-
             byte[] greeting = "Greeting".getBytes(StandardCharsets.UTF_8);
             byte[] sendingFileName = fileName.getBytes(StandardCharsets.UTF_8);
 
@@ -41,10 +44,10 @@ public class FileSender {
             // 이제 OK 문자열 수신
             if(waitFromServerConnectionAnswerFirst().equals("OK")) {
                 // 파일 전송 시작
-                startFileTransfer(fileName, fileNamePacket.getAddress(), port);
+                startFileTransfer(fileName, fileNamePacket.getAddress(), senderPort);
 
                 // 파일 전송이 끝나면 "Finish"를 Receiver에게 보낸다.
-                finishTransferCheck(greetingPacket.getAddress(), port);
+                finishTransferCheck(greetingPacket.getAddress(), senderPort);
 
                 // Receiver에게 "WellDone"을 받는다.
                 getWellDoneFromReceiver();
