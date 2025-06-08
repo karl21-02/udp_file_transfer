@@ -1,7 +1,6 @@
 package com.kangwon.global.entity;
 
 import java.io.Serializable;
-import java.nio.charset.StandardCharsets;
 
 /**
  * ~패킷 헤더

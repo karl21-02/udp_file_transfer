@@ -1,11 +1,12 @@
 package com.kangwon.sender;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
+import com.kangwon.global.entity.Packet;
+
+import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 
 public class FileSender {
 
@@ -23,7 +24,6 @@ public class FileSender {
 
     public static void start(int senderPort, String receiverIpAddress, int receiverPort, int timeoutInterval, String fileName, double ackDropProbability) {
         try {
-            System.out.println(123);
             InetSocketAddress newIp = new InetSocketAddress(InetAddress.getByName(receiverIpAddress), senderPort);
             udpSocket = new DatagramSocket();
             udpSocket.setSoTimeout(5000);
@@ -43,11 +43,15 @@ public class FileSender {
 
             // 이제 OK 문자열 수신
             if(waitFromServerConnectionAnswerFirst().equals("OK")) {
+
                 // 파일 전송 시작
-                startFileTransfer(fileName, fileNamePacket.getAddress(), senderPort);
+                startFileTransferWithRDT(fileName, greetingPacket.getAddress(), senderPort);
 
                 // 파일 전송이 끝나면 "Finish"를 Receiver에게 보낸다.
                 finishTransferCheck(greetingPacket.getAddress(), senderPort);
+
+
+
 
                 // Receiver에게 "WellDone"을 받는다.
                 getWellDoneFromReceiver();
@@ -55,10 +59,89 @@ public class FileSender {
         } catch (IOException e) {
             System.err.println("start 함수에서 에러 발생");
             throw new RuntimeException(e);
-        }
-        finally {
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException(e);
+        } finally {
             udpSocket.close();
         }
+    }
+
+    public static void startFileTransferWithRDT(String fileName, InetAddress address, int port) throws IOException, ClassNotFoundException {
+        File fileToSend = new File("com/kangwon/sender/fileForSender", fileName);
+        List<byte[]> chunks = new ArrayList<>();
+
+        try(FileInputStream fis = new FileInputStream(fileToSend)) {
+            // 파일을 읽어와서 청크 단위로 나누기
+            byte[] tmp = new byte[1000];
+            int read;
+            while((read = fis.read(tmp)) != -1) {
+                byte[] chunk = new byte[read];
+                System.arraycopy(tmp, 0, chunk, 0, read);
+                chunks.add(chunk);
+            }
+        } catch (IOException e) {
+            System.err.println("error while reading file");
+            throw new RuntimeException(e);
+        }
+
+        int curSeqNum = 0;
+
+        // 현재 순서 번호가 보내야하는 청크 개수보다 작으면 true
+        while(curSeqNum < chunks.size()) {
+            // ack를 받지 못하면 계속 청크 전송
+            Packet packet = new Packet(0, curSeqNum, chunks.get(curSeqNum));
+            boolean ack = false;
+            while(!ack) {
+                // 1. packet 보내기
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                ObjectOutputStream oos = new ObjectOutputStream(baos);
+                oos.writeObject(packet);
+
+                byte[] sendData = baos.toByteArray();
+                udpSocket.send(new DatagramPacket(sendData, sendData.length, address, port));
+
+
+                // 2. ACK 수신 대기
+                byte[] ackData = new byte[1000];
+                DatagramPacket datagramPacketACK = new DatagramPacket(ackData, ackData.length);
+                System.out.println("waiting");
+                udpSocket.receive(datagramPacketACK);
+
+                Packet receivedACK = null;
+                try {
+                    ByteArrayInputStream bais = new ByteArrayInputStream(datagramPacketACK.getData());
+                    ObjectInputStream ois = new ObjectInputStream(bais);
+
+                    receivedACK = (Packet) ois.readObject();
+                    System.out.println(receivedACK.getType());
+                }
+                catch (ClassNotFoundException classNotFoundException) {
+                    throw new IOException("패킷을 찾을 수 없습니다");
+                }
+
+                if(receivedACK.getType() == 1 && receivedACK.getAckNum() == curSeqNum) {
+                    ack = true;
+                }
+
+                // 종료를 알리는 EOT 전송
+
+                // 3. ACK 도착 전 타이머 강제 종료
+                    // 타이머 종료시 실패이므로, 패킷 재전송
+
+                // 4. ACK를 올바르게 수신한 경우 패킷 재전송 루프 진행
+            }
+            curSeqNum++;
+        }
+        sendPacketToReceiver(new Packet(2, 0), address, port);
+    }
+
+    private static void sendPacketToReceiver(Packet packet, InetAddress address, int port) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ObjectOutputStream oos = new ObjectOutputStream(baos);
+        oos.writeObject(packet);
+
+        byte[] sendData = baos.toByteArray();
+        udpSocket.send(new DatagramPacket(sendData, sendData.length, address, port));
     }
 
     public static void getWellDoneFromReceiver() throws IOException {
@@ -84,25 +167,6 @@ public class FileSender {
         } catch (IOException ioException) {
             System.err.println("finishTransferCheck 함수에서 에러 발생");
             ioException.printStackTrace();
-        }
-    }
-
-    public static void startFileTransfer(String fileName, InetAddress receiverAddress, int port) throws FileNotFoundException {
-        File fileToSend = new File("sender/fileForSender", fileName);
-        byte[] buffer = new byte[2048];
-
-        try(FileInputStream fis = new FileInputStream(fileToSend)) {
-            DatagramPacket filePacket = new DatagramPacket(buffer, buffer.length, receiverAddress, port);
-            int read = 0;
-            while((read = fis.read(buffer)) != -1) {
-                filePacket.setData(buffer, 0, read);
-                udpSocket.send(filePacket);
-            }
-            DatagramPacket eofPacket = new DatagramPacket(new byte[0], 0, receiverAddress, port);
-            udpSocket.send(eofPacket);
-        } catch (IOException e) {
-            System.err.println("startFileTransfer 함수에서 에러 발생");
-            throw new RuntimeException(e);
         }
     }
 
