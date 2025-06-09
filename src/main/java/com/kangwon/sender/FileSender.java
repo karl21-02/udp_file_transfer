@@ -7,12 +7,11 @@ import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
 
 public class FileSender {
 
     private static DatagramSocket udpSocket;
-    private static Random random = new Random();
+    private static int retransmissionCount = 0;
 
     public static void main(String[] args) {
         int senderPort = Integer.parseInt(args[0]);
@@ -108,25 +107,26 @@ public class FileSender {
                     System.out.println("waiting");
                     udpSocket.receive(datagramPacketACK);
 
-                    if(random.nextDouble() < ackDropProbability) {
-                        throw new SocketTimeoutException("ACK dropped");
-                    }
-
                     Packet receivedACK = null;
                     try {
                         ByteArrayInputStream bais = new ByteArrayInputStream(datagramPacketACK.getData());
                         ObjectInputStream ois = new ObjectInputStream(bais);
 
                         receivedACK = (Packet) ois.readObject();
-                        System.out.println(receivedACK.getType());
                     }
                     catch (ClassNotFoundException classNotFoundException) {
                         throw new IOException("패킷을 찾을 수 없습니다");
                     }
 
+                    // ACK를 잘 받았을 경우와 다른 번호의 ACK가 올 경우
                     if(receivedACK.getType() == 1 && receivedACK.getAckNum() == curSeqNum) {
+                        System.out.println(String.format("ACK-RCVD: ACK, ackNum=%d", receivedACK.getAckNum()));
                         ack = true;
                     }
+                    else {
+                        System.out.println(String.format("WRONG-ACK: Received ackNum=%d, expected=%d", receivedACK.getAckNum(), curSeqNum));
+                    }
+
                 } catch (SocketTimeoutException e) {
                     // 3. 타임아웃 발생! 패킷 재전송
                     System.out.println("Timeout event!");
