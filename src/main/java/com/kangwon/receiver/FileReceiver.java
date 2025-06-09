@@ -10,6 +10,9 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 
 public class FileReceiver {
+
+    private static int expectedSeqNum = 0;
+
     public static void main(String[] args) {
         int ReceiverPort = Integer.parseInt(args[0]);
         double ackDropProbability = Double.parseDouble(args[1]);
@@ -47,7 +50,7 @@ public class FileReceiver {
             responseAtStart(address, packetFromSender.getPort());
 
             // 초기 연결 확인 끝 파일 받기 시작
-            getFiles(fileToSavedName);
+            getFiles(fileToSavedName, ackDropProbability);
 
             // Sender로 부터 "Finish" 받고 출력
             getFinishCheckFromSender();
@@ -88,7 +91,7 @@ public class FileReceiver {
         }
     }
 
-    public static void getFiles(String savedFileName) throws IOException {
+    public static void getFiles(String savedFileName, double ackDropProbability) throws IOException {
         DatagramPacket packetFileFromServer = new DatagramPacket(new byte[65536], 65536);
         File fileToSaved = new File("com/kangwon/receiver/fileForReceiver/" + savedFileName);
         DataOutputStream dos = new DataOutputStream(new FileOutputStream(fileToSaved));
@@ -96,16 +99,72 @@ public class FileReceiver {
             while(true) {
                 udpSocket.receive(packetFileFromServer);
                 if(packetFileFromServer.getLength() > 0) {
+
+                    if (Math.random() < ackDropProbability) {
+                        System.out.printf("[%s] DATA Packet Dropped!%n", System.currentTimeMillis());
+                        continue; // 패킷을 버리고 다음 패킷을 기다림
+                    }
+
                     byte[] chunk = packetFileFromServer.getData();
                     Packet chunkReceived = null;
                     try (ByteArrayInputStream bais = new ByteArrayInputStream(chunk);
                         ObjectInputStream ois = new ObjectInputStream(bais)) {
                         chunkReceived = (Packet) ois.readObject();
 
-                        if(chunkReceived.getType() == 0) {
-                            dos.write(chunkReceived.getData(), 0, chunkReceived.getLength());
+                        System.out.printf("Packet Received: type=%d, seqNum=%d%n", chunkReceived.getType(), chunkReceived.getSeqNum());
 
-                            // 받은 패킷의 시퀀스 번호(seqNum)로 ACK 패킷을 생성합니다. (type=1)
+                        if(chunkReceived.getSeqNum() == expectedSeqNum) {
+                            if(chunkReceived.getType() == 0) {
+                                System.out.printf("Data written to file for seqNum=%d. Sending ACK.%n", expectedSeqNum);
+
+                                dos.write(chunkReceived.getData(), 0, chunkReceived.getLength());
+
+                                // 받은 패킷의 시퀀스 번호(seqNum)로 ACK 패킷을 생성합니다. (type=1)
+                                Packet ackPacket = new Packet(1, expectedSeqNum);
+
+                                // ACK 패킷을 직렬화하여 바이트 배열로 만듭니다.
+                                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                                ObjectOutputStream oos = new ObjectOutputStream(baos);
+                                oos.writeObject(ackPacket);
+                                byte[] ackData = baos.toByteArray();
+
+                                // Sender가 보낸 패킷의 주소와 포트 정보를 사용하여 응답할 목적지를 설정합니다.
+                                DatagramPacket datagramPacketACK = new DatagramPacket(
+                                        ackData,
+                                        ackData.length,
+                                        packetFileFromServer.getAddress(), // Sender의 IP 주소
+                                        packetFileFromServer.getPort()    // Sender의 포트 번호
+                                );
+
+                                // 생성된 ACK 패킷을 Sender에게 전송합니다.
+                                udpSocket.send(datagramPacketACK);
+                                expectedSeqNum++;
+                            }
+                            else if(chunkReceived.getType() == 2) { // EOT
+                                System.out.println("EOT packet received. Sending final ACK.");
+                                Packet ackPacket = new Packet(1, expectedSeqNum);
+                                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                                ObjectOutputStream oos = new ObjectOutputStream(baos);
+                                oos.writeObject(ackPacket);
+                                byte[] ackData = baos.toByteArray();
+
+                                DatagramPacket datagramPacketACK = new DatagramPacket(
+                                        ackData,
+                                        ackData.length,
+                                        packetFileFromServer.getAddress(),
+                                        packetFileFromServer.getPort()
+                                );
+
+                                // 생성된 ACK 패킷을 Sender에게 전송합니다.
+                                udpSocket.send(datagramPacketACK);
+                                break;
+                            }
+                        }
+                        else {
+                            // 중복 패킷이나 순서가 다른 패킷을 수신하면, 해당 번호의 ACK를 재전송한다.
+                            System.out.println(String.format("Duplicate Packet Discarded. Expected: %d, Got: %d. Resending ACK for %d.",
+                                    expectedSeqNum, chunkReceived.getSeqNum(), chunkReceived.getSeqNum()));
+
                             Packet ackPacket = new Packet(1, chunkReceived.getSeqNum());
 
                             // ACK 패킷을 직렬화하여 바이트 배열로 만듭니다.
@@ -124,24 +183,6 @@ public class FileReceiver {
 
                             // 생성된 ACK 패킷을 Sender에게 전송합니다.
                             udpSocket.send(datagramPacketACK);
-                        }
-                        else if(chunkReceived.getType() == 2) { // EOT
-                            Packet ackPacket = new Packet(1, chunkReceived.getSeqNum());
-                            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                            ObjectOutputStream oos = new ObjectOutputStream(baos);
-                            oos.writeObject(ackPacket);
-                            byte[] ackData = baos.toByteArray();
-
-                            DatagramPacket datagramPacketACK = new DatagramPacket(
-                                    ackData,
-                                    ackData.length,
-                                    packetFileFromServer.getAddress(),
-                                    packetFileFromServer.getPort()
-                            );
-
-                            // 생성된 ACK 패킷을 Sender에게 전송합니다.
-                            udpSocket.send(datagramPacketACK);
-                            break;
                         }
                     } catch (ClassNotFoundException e) {
                         throw new IOException("Failed to deserialize packet", e);
