@@ -7,10 +7,12 @@ import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 public class FileSender {
 
     private static DatagramSocket udpSocket;
+    private static Random random = new Random();
 
     public static void main(String[] args) {
         int senderPort = Integer.parseInt(args[0]);
@@ -24,9 +26,9 @@ public class FileSender {
 
     public static void start(int senderPort, String receiverIpAddress, int receiverPort, int timeoutInterval, String fileName, double ackDropProbability) {
         try {
-            InetSocketAddress newIp = new InetSocketAddress(InetAddress.getByName(receiverIpAddress), senderPort);
+            InetSocketAddress newIp = new InetSocketAddress(InetAddress.getByName(receiverIpAddress), receiverPort);
             udpSocket = new DatagramSocket();
-            udpSocket.setSoTimeout(5000);
+            udpSocket.setSoTimeout(timeoutInterval);
             byte[] greeting = "Greeting".getBytes(StandardCharsets.UTF_8);
             byte[] sendingFileName = fileName.getBytes(StandardCharsets.UTF_8);
 
@@ -45,13 +47,10 @@ public class FileSender {
             if(waitFromServerConnectionAnswerFirst().equals("OK")) {
 
                 // 파일 전송 시작
-                startFileTransferWithRDT(fileName, greetingPacket.getAddress(), senderPort);
+                startFileTransferWithRDT(fileName, greetingPacket.getAddress(), receiverPort, ackDropProbability);
 
                 // 파일 전송이 끝나면 "Finish"를 Receiver에게 보낸다.
-                finishTransferCheck(greetingPacket.getAddress(), senderPort);
-
-
-
+                finishTransferCheck(greetingPacket.getAddress(), receiverPort);
 
                 // Receiver에게 "WellDone"을 받는다.
                 getWellDoneFromReceiver();
@@ -66,7 +65,7 @@ public class FileSender {
         }
     }
 
-    public static void startFileTransferWithRDT(String fileName, InetAddress address, int port) throws IOException, ClassNotFoundException {
+    public static void startFileTransferWithRDT(String fileName, InetAddress address, int port, double ackDropProbability) throws IOException, ClassNotFoundException {
         File fileToSend = new File("com/kangwon/sender/fileForSender", fileName);
         List<byte[]> chunks = new ArrayList<>();
 
@@ -85,6 +84,7 @@ public class FileSender {
         }
 
         int curSeqNum = 0;
+        int retransmissionCount = 0;
 
         // 현재 순서 번호가 보내야하는 청크 개수보다 작으면 true
         while(curSeqNum < chunks.size()) {
@@ -92,37 +92,49 @@ public class FileSender {
             Packet packet = new Packet(0, curSeqNum, chunks.get(curSeqNum));
             boolean ack = false;
             while(!ack) {
-                // 1. packet 보내기
-                ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                ObjectOutputStream oos = new ObjectOutputStream(baos);
-                oos.writeObject(packet);
-
-                byte[] sendData = baos.toByteArray();
-                udpSocket.send(new DatagramPacket(sendData, sendData.length, address, port));
-
-
-                // 2. ACK 수신 대기
-                byte[] ackData = new byte[1000];
-                DatagramPacket datagramPacketACK = new DatagramPacket(ackData, ackData.length);
-                System.out.println("waiting");
-                udpSocket.receive(datagramPacketACK);
-
-                Packet receivedACK = null;
                 try {
-                    ByteArrayInputStream bais = new ByteArrayInputStream(datagramPacketACK.getData());
-                    ObjectInputStream ois = new ObjectInputStream(bais);
+                    // 1. packet 보내기
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    ObjectOutputStream oos = new ObjectOutputStream(baos);
+                    oos.writeObject(packet);
 
-                    receivedACK = (Packet) ois.readObject();
-                    System.out.println(receivedACK.getType());
-                }
-                catch (ClassNotFoundException classNotFoundException) {
-                    throw new IOException("패킷을 찾을 수 없습니다");
-                }
+                    byte[] sendData = baos.toByteArray();
+                    udpSocket.send(new DatagramPacket(sendData, sendData.length, address, port));
 
-                if(receivedACK.getType() == 1 && receivedACK.getAckNum() == curSeqNum) {
-                    ack = true;
-                }
 
+                    // 2. ACK 수신 대기
+                    byte[] ackData = new byte[1000];
+                    DatagramPacket datagramPacketACK = new DatagramPacket(ackData, ackData.length);
+                    System.out.println("waiting");
+                    udpSocket.receive(datagramPacketACK);
+
+                    if(random.nextDouble() < ackDropProbability) {
+                        throw new SocketTimeoutException("ACK dropped");
+                    }
+
+                    Packet receivedACK = null;
+                    try {
+                        ByteArrayInputStream bais = new ByteArrayInputStream(datagramPacketACK.getData());
+                        ObjectInputStream ois = new ObjectInputStream(bais);
+
+                        receivedACK = (Packet) ois.readObject();
+                        System.out.println(receivedACK.getType());
+                    }
+                    catch (ClassNotFoundException classNotFoundException) {
+                        throw new IOException("패킷을 찾을 수 없습니다");
+                    }
+
+                    if(receivedACK.getType() == 1 && receivedACK.getAckNum() == curSeqNum) {
+                        ack = true;
+                    }
+                } catch (SocketTimeoutException e) {
+                    // 3. 타임아웃 발생! 패킷 재전송
+                    System.out.println("Timeout event!");
+                    retransmissionCount++;
+                } catch (IOException e) {
+                    System.err.println("Error while waiting for ACK");
+                    break;
+                }
                 // 종료를 알리는 EOT 전송
 
                 // 3. ACK 도착 전 타이머 강제 종료
@@ -150,6 +162,7 @@ public class FileSender {
             if(receivedACK.getType() == 1 && receivedACK.getAckNum() == curSeqNum) {
                 System.out.println("connection terminates");
             }
+            System.out.println(retransmissionCount);
         }
         catch (ClassNotFoundException classNotFoundException) {
             throw new IOException("패킷을 찾을 수 없습니다");

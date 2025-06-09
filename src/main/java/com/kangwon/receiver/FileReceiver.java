@@ -45,6 +45,7 @@ public class FileReceiver {
                 count--;
             }
             responseAtStart(address, packetFromSender.getPort());
+
             // 초기 연결 확인 끝 파일 받기 시작
             getFiles(fileToSavedName);
 
