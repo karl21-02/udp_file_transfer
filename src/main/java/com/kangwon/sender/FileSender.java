@@ -53,6 +53,7 @@ public class FileSender {
 
                 // Receiver에게 "WellDone"을 받는다.
                 getWellDoneFromReceiver();
+                System.out.println("retransmissionCount : " + retransmissionCount);
             }
         } catch (IOException e) {
             System.err.println("start 함수에서 에러 발생");
@@ -104,8 +105,15 @@ public class FileSender {
                     // 2. ACK 수신 대기
                     byte[] ackData = new byte[1000];
                     DatagramPacket datagramPacketACK = new DatagramPacket(ackData, ackData.length);
-                    System.out.println("waiting");
+                    System.out.println("waiting for receiver ack");
                     udpSocket.receive(datagramPacketACK);
+
+                    if (Math.random() < ackDropProbability) {
+                        // SocketTimeoutException을 강제 발생
+                        // 기존의 재전송 로직을 그대로 사용해야 한다.
+                        System.out.println("ACK packet dropped by simulation");
+                        throw new SocketTimeoutException("ACK packet dropped by simulation");
+                    }
 
                     Packet receivedACK = null;
                     try {
@@ -135,17 +143,11 @@ public class FileSender {
                     System.err.println("Error while waiting for ACK");
                     break;
                 }
-                // 종료를 알리는 EOT 전송
-
-                // 3. ACK 도착 전 타이머 강제 종료
-                    // 타이머 종료시 실패이므로, 패킷 재전송
-
-                // 4. ACK를 올바르게 수신한 경우 패킷 재전송 루프 진행
             }
             curSeqNum++;
         }
 
-        // EOT
+        // // 종료를 알리는 EOT 전송
         sendPacketToReceiver(new Packet(2, curSeqNum), address, port);
 
         // ACK Receive of EOT
